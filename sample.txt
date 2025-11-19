@@ -1,0 +1,787 @@
+Yes, but we should make them **even more “zero‑practice friendly”**: every click, every command, in exact order.
+
+Below is a **fully step‑by‑step guide** assuming:
+
+- Your repo: `https://github.com/Eshwar0745/xes`
+- It builds with `mvn clean package`
+- You have at least:
+  - Java + Maven
+  - Docker
+  - Jenkins
+  - Minikube + kubectl
+  - Internet (for GitHub, Docker Hub, ngrok)
+- You can adapt `sh` → `bat` if Jenkins is on Windows.
+
+I’ll split by exam area so you can revise each one separately.
+
+---
+
+## 1. Jenkins (using `Eshwar0745/xes`)
+
+### 1.0. One‑time GitHub check
+
+1. Open browser.
+2. Go to: `https://github.com/Eshwar0745/xes`
+3. Confirm:
+   - You see `pom.xml`
+   - You see `Dockerfile`
+   - Optionally download the PDF inside repo for extra help.
+
+---
+
+### 1.1. Jenkins: global prerequisites
+
+#### 1.1.1 Check Jenkins is running
+
+1. Open browser.
+2. Go to `http://localhost:8080` (or your Jenkins URL).
+3. Log in with your Jenkins username/password.
+
+#### 1.1.2 Configure JDK and Maven (if not already)
+
+1. In Jenkins, left side menu → click **“Manage Jenkins”**.
+2. Click **“Tools”** or **“Global Tool Configuration”** (depends on version).
+3. Scroll to **JDK** section:
+   - If a JDK is already defined and auto‑installed, you can leave it.
+   - Otherwise:
+     1. Click **“Add JDK”**.
+     2. Name: `JDK17` (or any name).
+     3. Option A: If “Install automatically” works in lab, check it and select version.
+     4. Option B (if they have local JDK): uncheck install automatically and enter JAVA_HOME path.
+4. Scroll to **Maven** section:
+   1. Click **“Add Maven”**.
+   2. Name: `Maven3`.
+   3. Check “Install automatically” and select latest version (or point to existing path).
+5. Click **“Save”** at bottom.
+
+#### 1.1.3 Configure email
+
+1. In Jenkins, click **“Manage Jenkins”**.
+2. Click **“System”** (or “Configure System”).
+3. Scroll to **“E‑mail Notification”**:
+   - SMTP server: e.g. `smtp.gmail.com`
+   - Check “Use SMTP Authentication”.
+     - User Name: your full email address (e.g. `yourname@gmail.com`)
+     - Password: app password (if using Gmail) or actual password if allowed.
+   - Use SSL or TLS as required by your provider:
+     - For Gmail: 
+       - SMTP port: `587` with TLS, or `465` with SSL.
+4. Optionally fill “Default user e‑mail suffix” (e.g. `@gmail.com`).
+5. Scroll to bottom and click **“Save”**.
+6. To test:
+   1. Go back to **“Manage Jenkins → System”**.
+   2. Find “E‑mail Notification”.
+   3. Click **“Test configuration by sending test e‑mail”**.
+   4. Enter your email, click **“Test”**.
+   5. Check inbox.
+
+---
+
+### 1.2. ngrok configuration (for webhooks)
+
+#### 1.2.1 Start ngrok
+
+1. On your machine, open a **terminal / command prompt**.
+2. Run:
+   ```bash
+   ngrok http 8080
+   ```
+   (use the port where Jenkins is running)
+
+3. After starting, you will see an output like:
+
+   ```
+   Forwarding                    https://abcd1234.ngrok.io -> http://localhost:8080
+   ```
+
+4. Copy the **https URL** (e.g. `https://abcd1234.ngrok.io`).
+
+#### 1.2.2 Set Jenkins root URL
+
+1. In Jenkins, go to **“Manage Jenkins → System”**.
+2. Find **“Jenkins URL”** field.
+3. Paste `https://abcd1234.ngrok.io` into it.
+4. Click **“Save”**.
+
+---
+
+### 1.3. 2‑stage pipeline (Checkout + Build)
+
+#### 1.3.1 Create the pipeline job
+
+1. In Jenkins main page, click **“New Item”**.
+2. In “Enter an item name”, type: `xes-2-stage-pipeline`.
+3. Select **“Pipeline”** (NOT Freestyle).
+4. Click **“OK”**.
+
+#### 1.3.2 Add pipeline script
+
+1. Scroll down to **“Pipeline”** section.
+2. In “Definition”, choose **“Pipeline script”**.
+3. In “Script” box, paste this:
+
+   ```groovy
+   pipeline {
+       agent any
+
+       stages {
+           stage('Checkout') {
+               steps {
+                   git branch: 'main',
+                       url: 'https://github.com/Eshwar0745/xes.git'
+               }
+           }
+
+           stage('Build') {
+               steps {
+                   sh 'mvn clean package'
+               }
+           }
+       }
+   }
+   ```
+
+   - If the branch is `master` instead of `main`, change `branch: 'main'` → `branch: 'master'`.
+   - If Jenkins agent is Windows, change `sh 'mvn clean package'` → `bat 'mvn clean package'`.
+
+4. Click **“Save”**.
+
+#### 1.3.3 Run it
+
+1. After saving, you’re on the job page.
+2. Click **“Build Now”** on left.
+3. A build number appears under “Build History” (e.g. `#1`).
+4. Click `#1`, then click **“Console Output”** to see logs.
+5. Check that:
+   - Git clone succeeds.
+   - Maven build succeeds.
+
+---
+
+### 1.4. 3‑stage pipeline (Checkout + Build + Test)
+
+#### 1.4.1 Create new pipeline job
+
+1. From Jenkins main page, click **“New Item”**.
+2. Name: `xes-3-stage-pipeline`.
+3. Select **“Pipeline”**, click **“OK”**.
+
+#### 1.4.2 Add script
+
+1. Scroll to **“Pipeline”** section.
+2. Choose **“Pipeline script”**.
+3. Paste:
+
+   ```groovy
+   pipeline {
+       agent any
+
+       stages {
+           stage('Checkout') {
+               steps {
+                   git branch: 'main',
+                       url: 'https://github.com/Eshwar0745/xes.git'
+               }
+           }
+
+           stage('Build') {
+               steps {
+                   sh 'mvn clean package'
+               }
+           }
+
+           stage('Test') {
+               steps {
+                   sh 'mvn test'
+               }
+           }
+       }
+
+       post {
+           always {
+               junit 'target/surefire-reports/*.xml'
+           }
+       }
+   }
+   ```
+
+4. Click **“Save”**.
+5. Click **“Build Now”**, then check **Console Output**.
+
+---
+
+### 1.5. Scripted pipeline (node syntax)
+
+#### 1.5.1 Create job
+
+1. In Jenkins, click **“New Item”**.
+2. Name: `xes-scripted-pipeline`.
+3. Choose **“Pipeline”**, click **“OK”**.
+
+#### 1.5.2 Add scripted pipeline code
+
+1. Scroll to **“Pipeline”**.
+2. Choose **“Pipeline script”**.
+3. Paste:
+
+   ```groovy
+   node {
+       stage('Checkout') {
+           git branch: 'main',
+               url: 'https://github.com/Eshwar0745/xes.git'
+       }
+
+       stage('Build') {
+           sh 'mvn clean package'
+       }
+
+       stage('Test') {
+           sh 'mvn test'
+       }
+   }
+   ```
+
+4. Click **“Save”**.
+5. Click **“Build Now”** and check output.
+
+---
+
+### 1.6. Webhooks (GitHub → Jenkins)
+
+Goal: A push to `xes` triggers Jenkins build.
+
+We’ll use `xes-2-stage-pipeline`.
+
+#### 1.6.1 Enable GitHub trigger in Jenkins job
+
+1. Go to **“xes-2-stage-pipeline”** job.
+2. Click **“Configure”** on left.
+3. Scroll to **“Build Triggers”**.
+4. Tick **“GitHub hook trigger for GITScm polling”**.
+5. Click **“Save”**.
+
+#### 1.6.2 Create webhook in GitHub
+
+1. Open browser → `https://github.com/Eshwar0745/xes`.
+2. Click **“Settings”** (on the repo, not account).
+3. Left menu → click **“Webhooks”**.
+4. Click **“Add webhook”**.
+5. In **Payload URL**, enter:
+   ```text
+   https://<your-ngrok-id>.ngrok.io/github-webhook/
+   ```
+   Example: `https://abcd1234.ngrok.io/github-webhook/`
+6. Content type: choose `application/json`.
+7. Select **“Just the push event”**.
+8. Click **“Add webhook”**.
+9. GitHub will send a test ping; you should see a green tick next to the webhook.
+
+#### 1.6.3 Test webhook
+
+1. On your local machine, clone `xes` if not:
+   ```bash
+   git clone https://github.com/Eshwar0745/xes.git
+   cd xes
+   ```
+2. Edit a file (e.g., `README.md`), make a tiny change.
+3. Run:
+   ```bash
+   git add .
+   git commit -m "Test webhook"
+   git push
+   ```
+4. Go to Jenkins → open `xes-2-stage-pipeline`.
+5. You should see a new build triggered automatically soon after push.
+
+---
+
+### 1.7. Email notification in pipeline
+
+Use `xes-3-stage-pipeline`.
+
+#### 1.7.1 Ensure Email‑ext plugin installed
+
+1. Manage Jenkins → **“Manage Plugins”**.
+2. Go to “Available” tab, search `Email Extension Plugin` (if not installed).
+3. Install and restart if required.
+
+#### 1.7.2 Add emailext steps to pipeline
+
+1. Open `xes-3-stage-pipeline`.
+2. Click **“Configure”**.
+3. In pipeline script, replace with:
+
+   ```groovy
+   pipeline {
+       agent any
+
+       stages {
+           stage('Checkout') {
+               steps {
+                   git branch: 'main',
+                       url: 'https://github.com/Eshwar0745/xes.git'
+               }
+           }
+
+           stage('Build') {
+               steps {
+                   sh 'mvn clean package'
+               }
+           }
+
+           stage('Test') {
+               steps {
+                   sh 'mvn test'
+               }
+           }
+       }
+
+       post {
+           success {
+               emailext(
+                   to: 'yourmail@example.com',
+                   subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                   body: "Build succeeded.\nSee details here: ${env.BUILD_URL}"
+               )
+           }
+           failure {
+               emailext(
+                   to: 'yourmail@example.com',
+                   subject: "FAILURE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                   body: "Build failed.\nSee details here: ${env.BUILD_URL}"
+               )
+           }
+       }
+   }
+   ```
+
+4. Click **“Save”**.
+5. Click **“Build Now”**.
+6. Check email for success/failure mail.
+
+---
+
+## 2. Minikube (Kubernetes) with `xes`
+
+### 2.1. Build & push Docker image from `xes`
+
+#### 2.1.1 Login to Docker Hub
+
+1. Open terminal.
+2. Run:
+   ```bash
+   docker login
+   ```
+3. Enter your Docker Hub username and password.
+
+#### 2.1.2 Build image
+
+1. In terminal:
+   ```bash
+   cd /path/to/xes   # folder with Dockerfile
+   docker build -t <your-dockerhub-username>/xes:1.0 .
+   ```
+   Example:
+   ```bash
+   docker build -t eshwar0745/xes:1.0 .
+   ```
+
+2. Wait until build completes successfully.
+
+#### 2.1.3 Push image
+
+```bash
+docker push <your-dockerhub-username>/xes:1.0
+```
+
+Check on Docker Hub website that `xes:1.0` appears.
+
+---
+
+### 2.2. Start Minikube
+
+1. In terminal:
+   ```bash
+   minikube start
+   ```
+2. Check:
+   ```bash
+   kubectl get nodes
+   ```
+   You should see one node (status: Ready).
+
+---
+
+### 2.3. Create Deployment
+
+#### 2.3.1 Create `deployment.yaml` file
+
+1. In a text editor, create a new file named `deployment.yaml`.
+2. Paste:
+
+   ```yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: xes-deployment
+   spec:
+     replicas: 2
+     selector:
+       matchLabels:
+         app: xes-app
+     template:
+       metadata:
+         labels:
+           app: xes-app
+       spec:
+         containers:
+         - name: xes-container
+           image: <your-dockerhub-username>/xes:1.0
+           ports:
+           - containerPort: 8080
+   ```
+
+3. Save the file in some directory.
+
+#### 2.3.2 Apply deployment
+
+1. In terminal, go to directory with `deployment.yaml`.
+2. Run:
+   ```bash
+   kubectl apply -f deployment.yaml
+   ```
+3. Check:
+   ```bash
+   kubectl get deployments
+   kubectl get pods
+   ```
+   You should see `xes-deployment` and a couple of pods (`Running`).
+
+---
+
+### 2.4. Create Service
+
+#### 2.4.1 Create `service.yaml`
+
+1. Create new file `service.yaml`.
+2. Paste:
+
+   ```yaml
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: xes-service
+   spec:
+     type: NodePort
+     selector:
+       app: xes-app
+     ports:
+     - port: 80
+       targetPort: 8080
+       nodePort: 30080
+   ```
+
+3. Save.
+
+#### 2.4.2 Apply service
+
+1. In terminal:
+   ```bash
+   kubectl apply -f service.yaml
+   ```
+2. Check:
+   ```bash
+   kubectl get svc
+   ```
+   You should see `xes-service` with `PORT(S)` like `80:30080/TCP`.
+
+---
+
+### 2.5. Access application
+
+Option A: Minikube helper
+
+```bash
+minikube service xes-service
+```
+
+- This will open a browser or print a URL like `http://192.168.49.2:30080`.
+
+Option B: Get Minikube IP
+
+1. Run:
+   ```bash
+   minikube ip
+   ```
+   Suppose it prints `192.168.49.2`.
+
+2. Open browser:
+   ```text
+   http://192.168.49.2:30080
+   ```
+
+You should see your web app (whatever `xes` exposes on port 8080).
+
+---
+
+## 3. Nagios using Docker
+
+### 3.1. Ensure Docker is running
+
+1. In terminal:
+   ```bash
+   docker ps
+   ```
+2. If it errors, start Docker Desktop or Docker service.
+
+### 3.2. Pull & run Nagios container
+
+1. In terminal:
+   ```bash
+   docker pull jasonrivers/nagios
+   ```
+2. Run container:
+   ```bash
+   docker run --name nagios -d \
+     -p 8080:80 \
+     -e NAGIOSADMIN_USER=nagiosadmin \
+     -e NAGIOSADMIN_PASS=admin \
+     jasonrivers/nagios
+   ```
+3. Check:
+   ```bash
+   docker ps
+   ```
+   You should see `nagios` container running.
+
+### 3.3. Access Nagios web UI
+
+1. Open browser.
+2. Go to: `http://localhost:8080/`.
+3. Login:
+   - Username: `nagiosadmin`
+   - Password: `admin`.
+4. You will see Nagios dashboard with default monitored host.
+
+In the exam, if asked:
+- Show these commands.
+- Explain that to add hosts/services you edit Nagios config files or mount them via Docker.
+
+---
+
+## 4. AWS with Maven webapp `xes`
+
+This might be partly theoretical if they don’t give AWS accounts, but here are concrete steps.
+
+### 4.1. Build the app
+
+1. On your machine:
+   ```bash
+   cd xes
+   mvn clean package
+   ```
+2. Check `target` directory for output:
+   - If it’s a WAR: something like `target/xes.war`.
+   - If a JAR: `target/xes.jar`.
+
+### 4.2. Deploy to EC2 (high‑level practical)
+
+#### 4.2.1 Connect to EC2
+
+1. Have an EC2 instance running (Ubuntu or Amazon Linux).
+2. In terminal:
+   ```bash
+   ssh -i <your-key>.pem ubuntu@<EC2-PUBLIC-IP>
+   ```
+
+#### 4.2.2 Install Java + Tomcat (for WAR)
+
+On EC2 (after logging in):
+
+```bash
+sudo apt update
+sudo apt install -y openjdk-17-jdk tomcat9
+sudo systemctl enable tomcat9
+sudo systemctl start tomcat9
+```
+
+#### 4.2.3 Copy WAR from local to EC2
+
+_on your local machine_:
+
+```bash
+scp -i <your-key>.pem target/xes.war ubuntu@<EC2-PUBLIC-IP>:/home/ubuntu/
+```
+
+#### 4.2.4 Deploy WAR to Tomcat
+
+_on EC2_:
+
+```bash
+sudo cp /home/ubuntu/xes.war /var/lib/tomcat9/webapps/
+sudo systemctl restart tomcat9
+```
+
+#### 4.2.5 Access
+
+- In browser:  
+  `http://<EC2-PUBLIC-IP>:8080/xes`
+
+In the exam, if you cannot actually do it:
+- Write these steps.
+- Or show them inside a Jenkins pipeline **Deploy** stage:
+
+```groovy
+stage('Deploy to AWS') {
+    steps {
+        sh '''
+        scp -i /path/to/key.pem target/xes.war ubuntu@<EC2-IP>:/home/ubuntu/
+        ssh -i /path/to/key.pem ubuntu@<EC2-IP> "sudo cp /home/ubuntu/xes.war /var/lib/tomcat9/webapps/ && sudo systemctl restart tomcat9"
+        '''
+    }
+}
+```
+
+---
+
+## 5. UML (compulsory) – ATM example (you can adapt)
+
+You won’t have tools here, just paper. So **memorize this pattern**.
+
+### 5.1. Use Case Diagram (ATM)
+
+Steps to draw:
+
+1. Draw a big rectangle labelled **“ATM System”**.
+2. Left side: draw a stick man labelled **“Customer”**.
+3. Inside the box, draw ovals for use cases:
+   - `Authenticate User`
+   - `Withdraw Cash`
+   - `Deposit Cash`
+   - `Check Balance`
+   - `Change PIN`
+   - `Print Receipt`
+4. Draw **straight lines** from `Customer` to each use case.
+5. Draw dashed arrows labelled «include»:
+   - From `Withdraw Cash` → `Authenticate User`
+   - From `Deposit Cash` → `Authenticate User`
+   - From `Change PIN` → `Authenticate User`
+6. Draw dashed arrow labelled «extend»:
+   - From `Print Receipt` → `Withdraw Cash`
+   - (Optionally also from `Print Receipt` → `Deposit Cash`)
+
+### 5.2. Class Diagram (ATM)
+
+Steps to sketch:
+
+1. Draw rectangles (3 compartments) for these classes:
+   - `ATM`
+   - `Card`
+   - `Account`
+   - `Customer`
+   - `Transaction` (abstract)
+   - `Withdrawal`
+   - `Deposit`
+
+2. Inside, add simple attributes/methods, e.g.:
+
+   - `ATM`
+     - `atmID: String`
+     - `location: String`
+     - `insertCard(c: Card)`
+     - `authenticate(pin: int): boolean`
+     - `performTransaction(t: Transaction)`
+
+   - `Card`
+     - `cardNumber: String`
+     - `expiryDate: Date`
+     - `pin: int`
+     - `account: Account`
+
+   - `Account`
+     - `accountNumber: String`
+     - `balance: double`
+     - `debit(amount: double)`
+     - `credit(amount: double)`
+     - `getBalance(): double`
+
+   - `Customer`
+     - `name: String`
+     - `customerID: String`
+     - `accounts: List<Account>`
+
+   - `Transaction`
+     - `transactionId: String`
+     - `date: Date`
+     - `amount: double`
+     - `execute()`
+
+   - `Withdrawal` extends `Transaction`
+   - `Deposit` extends `Transaction`
+
+3. Draw relationships:
+   - `Customer` —<multiple>— `Account` (1..*).
+   - `Account` —<multiple>— `Transaction`.
+   - `Card` —1‑to‑1— `Account`.
+   - `ATM` associates with `Card`, `Account`, `Transaction`.
+4. Draw **triangle inheritance arrow** from `Withdrawal` to `Transaction`, and from `Deposit` to `Transaction`.
+
+### 5.3. Sequence Diagram (Withdraw Cash)
+
+Steps:
+
+1. Draw lifelines top to bottom:
+   - `Customer`
+   - `ATM`
+   - `Card`
+   - `BankSystem`
+   - `Account`
+
+2. Draw messages in order:
+
+   - `Customer → ATM: insertCard(card)`
+   - `ATM → Card: validateCard()`
+   - `ATM → Customer: requestPIN()`
+   - `Customer → ATM: enterPIN(pin)`
+   - `ATM → BankSystem: verifyPIN(card, pin)`
+   - `BankSystem → ATM: pinStatus(ok)`
+   - `ATM → Customer: requestAmount()`
+   - `Customer → ATM: enterAmount(amount)`
+   - `ATM → BankSystem: requestWithdrawal(account, amount)`
+   - `BankSystem → Account: debit(amount)`
+   - `Account → BankSystem: debitStatus(success)`
+   - `BankSystem → ATM: approve()`
+   - `ATM → Customer: dispenseCash()`
+   - `ATM → Customer: printReceipt()`
+
+3. Optionally use `alt` frame for invalid PIN or insufficient funds.
+
+### 5.4. Component Diagram (ATM)
+
+Steps:
+
+1. Draw components as big rectangles labelled with `<<component>>`:
+   - `<<component>> ATM UI`
+   - `<<component>> ATM Controller`
+   - `<<component>> Card Reader`
+   - `<<component>> Cash Dispenser`
+   - `<<component>> Receipt Printer`
+   - `<<component>> Bank Server`
+   - `<<component>> Database`
+
+2. Draw connections:
+   - `ATM UI` → `ATM Controller`
+   - `ATM Controller` → `Card Reader`
+   - `ATM Controller` → `Cash Dispenser`
+   - `ATM Controller` → `Receipt Printer`
+   - `ATM Controller` ↔ `Bank Server` (network).
+   - `Bank Server` ↔ `Database`.
+
+You can reuse this pattern for **online ticket reservation** and **book banking** just by changing names (User, Show, Ticket, Book, etc.).
+
+---
+
+If you want, next I can:
+
+- Write a **ready‑to‑submit Jenkinsfile** for your `xes` repo including build + Docker build + push.
+- Or help you adapt this entire plan into a **one‑page crib sheet** you can quickly glance at before the exam.
